@@ -68,6 +68,7 @@ class MonicaAdapter extends BasePlatformAdapter {
     try {
       const urlObj = new URL(url);
       const pathname = urlObj.pathname;
+      const searchParams = urlObj.searchParams;
 
       // 移除开头的斜杠
       const pathWithoutLeadingSlash = pathname.startsWith('/') ? pathname.substring(1) : pathname;
@@ -78,8 +79,14 @@ class MonicaAdapter extends BasePlatformAdapter {
       // 根据Monica的URL格式提取对话ID
       let conversationId = null;
 
+      // 优先使用 query 参数（例如 convId）
+      const qpConvId = searchParams.get('convId') || searchParams.get('conversationId') || searchParams.get('cid');
+      if (qpConvId && typeof qpConvId === 'string') {
+        conversationId = qpConvId;
+      }
+
       // 常见的Monica对话URL模式
-      if (pathSegments.length >= 2) {
+      if (!conversationId && pathSegments.length >= 2) {
         if (pathSegments[0] === 'chat' && pathSegments[1]) {
           conversationId = pathSegments[1];
         }
@@ -92,16 +99,27 @@ class MonicaAdapter extends BasePlatformAdapter {
         else if (pathSegments[0] === 't' && pathSegments[1]) {
           conversationId = pathSegments[1];
         }
+        // /home/chat/... 这种路径
+        else if (pathSegments[0] === 'home' && pathSegments[1] === 'chat') {
+          // 尽可能使用后续段拼成稳定ID
+          const rest = pathSegments.slice(2).filter(Boolean).join('_');
+          if (rest) conversationId = rest;
+        }
         // 如果只有一个段且看起来像ID
         else if (pathSegments.length === 1 && pathSegments[0] && /^[a-zA-Z0-9_-]+$/.test(pathSegments[0])) {
           conversationId = pathSegments[0];
         }
       }
 
-      if (conversationId) {
-        // 使用完整路径作为对话ID
-        result.conversationId = pathWithoutLeadingSlash.replace(/\//g, '_');
+      // 兜底：若仍未提取到，使用完整路径（去除斜杠）作为对话ID
+      const sanitize = (s) => (s || '').replace(/[\/:?&=#%]/g, '_');
+      if (!conversationId && pathWithoutLeadingSlash) {
+        conversationId = pathWithoutLeadingSlash;
+      }
 
+      if (conversationId) {
+        // 统一清理，保证ID稳定
+        result.conversationId = sanitize(conversationId);
         console.log(`AI Chat Memory: 提取到Monica对话ID: ${result.conversationId}`);
       }
 

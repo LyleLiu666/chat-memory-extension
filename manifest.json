@@ -47,7 +47,9 @@
         "js/adapters/monica.js",
         "debug.js"
       ],
-      "run_at": "document_end"
+      "run_at": "document_end",
+      "all_frames": true,
+      "match_about_blank": true
     },
     {
       "matches": ["http://localhost:*/*"],
