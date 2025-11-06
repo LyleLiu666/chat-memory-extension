@@ -1,0 +1,326 @@
+/**
+ * AI Chat Memory - 内容页面样式
+ * 包含悬浮标签、边缘引导等UI元素的样式
+ */
+
+/* ========== 悬浮标签基础样式 ========== */
+.ai-chat-memory-float {
+  position: fixed;
+  top: 100px;
+  right: 20px;
+  z-index: 2147483647; /* 最高层级 */
+
+  background: white;
+  border: 2px solid #4090FF;
+  border-radius: 8px;
+
+  padding: 8px 12px;
+  min-width: 200px;
+  max-width: 300px;
+
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  cursor: grab;
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 12px;
+  line-height: 1.4;
+
+  transition: all 0.3s ease;
+  user-select: none;
+
+  /* 防止文本选择 */
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+/* ========== 悬浮标签状态样式 ========== */
+
+/* 自动保存状态 */
+.ai-chat-memory-auto-save {
+  border-color: #16a34a;
+  background: #f0fdf4;
+}
+
+/* 手动保存状态 */
+.ai-chat-memory-manual-save {
+  border-color: #4090FF;
+  background: #eff6ff;
+}
+
+/* 保存成功状态 */
+.ai-chat-memory-success {
+  border-color: #16a34a;
+  background: #f0fdf4;
+  box-shadow: 0 0 20px rgba(22, 163, 74, 0.4);
+}
+
+/* 错误状态 */
+.ai-chat-memory-error {
+  border-color: #dc2626;
+  background: #fef2f2;
+}
+
+/* ========== 拖动状态 ========== */
+.ai-chat-memory-float.dragging {
+  opacity: 0.8;
+  transform: scale(1.05);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  z-index: 2147483648;
+}
+
+/* ========== 贴边状态 ========== */
+.ai-chat-memory-float.edge-docked {
+  border-radius: 8px 0 0 8px;
+  box-shadow: -2px 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.ai-chat-memory-float.edge-docked.left {
+  left: 0;
+  right: auto;
+  border-radius: 0 8px 8px 0;
+  box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.ai-chat-memory-float.edge-docked.right {
+  right: 0;
+  left: auto;
+  border-radius: 8px 0 0 8px;
+}
+
+/* ========== 接近边缘状态 ========== */
+.ai-chat-memory-float.near-edge {
+  border-color: #f59e0b;
+  box-shadow: 0 0 16px rgba(245, 158, 11, 0.3);
+}
+
+/* ========== 图标样式 ========== */
+.ai-chat-memory-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.ai-chat-memory-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* ========== 状态文本样式 ========== */
+.ai-chat-memory-status {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+  color: #374151;
+}
+
+/* ========== 保存按钮样式 ========== */
+.ai-chat-memory-save {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  background: #4090FF;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ai-chat-memory-save:hover {
+  background: #2563eb;
+  transform: scale(1.1);
+}
+
+.ai-chat-memory-save:active {
+  transform: scale(0.95);
+}
+
+.ai-chat-memory-save span {
+  color: white;
+  line-height: 1;
+}
+
+/* ========== 边缘引导样式 ========== */
+.edge-guide {
+  position: fixed;
+  top: 0;
+  width: 8px;
+  height: 100vh;
+  background: rgba(64, 144, 255, 0.3);
+  z-index: 2147483646;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.edge-guide.left {
+  left: 0;
+  border-right: 2px solid #4090FF;
+}
+
+.edge-guide.right {
+  right: 0;
+  border-left: 2px solid #4090FF;
+}
+
+.edge-guide.active {
+  opacity: 1;
+  background: rgba(64, 144, 255, 0.1);
+}
+
+/* ========== 淡入动画 ========== */
+.ai-chat-memory-fade-in {
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ========== 脉冲动画（成功状态） ========== */
+.ai-chat-memory-success {
+  animation: successPulse 0.6s ease-in-out;
+}
+
+@keyframes successPulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* ========== 错误动画 ========== */
+.ai-chat-memory-error {
+  animation: errorShake 0.5s ease-in-out;
+}
+
+@keyframes errorShake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-5px);
+  }
+  75% {
+    transform: translateX(5px);
+  }
+}
+
+/* ========== 深色主题适配 ========== */
+@media (prefers-color-scheme: dark) {
+  .ai-chat-memory-float {
+    background: #1f2937;
+    border-color: #60a5fa;
+    color: #f9fafb;
+  }
+
+  .ai-chat-memory-auto-save {
+    background: #064e3b;
+    border-color: #34d399;
+  }
+
+  .ai-chat-memory-manual-save {
+    background: #1e3a8a;
+    border-color: #60a5fa;
+  }
+
+  .ai-chat-memory-success {
+    background: #064e3b;
+    border-color: #34d399;
+  }
+
+  .ai-chat-memory-error {
+    background: #7f1d1d;
+    border-color: #f87171;
+  }
+
+  .ai-chat-memory-status {
+    color: #f9fafb;
+  }
+
+  .edge-guide {
+    background: rgba(96, 165, 250, 0.2);
+  }
+
+  .edge-guide.left {
+    border-right-color: #60a5fa;
+  }
+
+  .edge-guide.right {
+    border-left-color: #60a5fa;
+  }
+
+  .edge-guide.active {
+    background: rgba(96, 165, 250, 0.1);
+  }
+}
+
+/* ========== 响应式设计 ========== */
+@media (max-width: 768px) {
+  .ai-chat-memory-float {
+    min-width: 160px;
+    max-width: 200px;
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+
+  .ai-chat-memory-save {
+    width: 20px;
+    height: 20px;
+  }
+
+  .ai-chat-memory-save span {
+    font-size: 12px;
+  }
+}
+
+/* ========== 高对比度模式 ========== */
+@media (prefers-contrast: high) {
+  .ai-chat-memory-float {
+    border-width: 3px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  .ai-chat-memory-status {
+    font-weight: 600;
+  }
+}
+
+/* ========== 减少动画模式 ========== */
+@media (prefers-reduced-motion: reduce) {
+  .ai-chat-memory-float,
+  .ai-chat-memory-save,
+  .edge-guide {
+    transition: none;
+  }
+
+  .ai-chat-memory-fade-in,
+  .ai-chat-memory-success,
+  .ai-chat-memory-error {
+    animation: none;
+  }
+}

@@ -1,0 +1,97 @@
+{
+  "manifest_version": 3,
+  "name": "AI Chat Memory",
+  "version": "1.0.0",
+  "description": "Save and manage your AI chat conversations from ChatGPT, Gemini, and Monica",
+  "author": "Your Name",
+
+  "background": {
+    "service_worker": "js/background.js"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
+      "css": ["css/content.css"],
+      "js": [
+        "js/core/compatibility.js",
+        "js/core/storage-manager.js",
+        "js/core/base.js",
+        "js/content_common.js",
+        "js/adapters/chatgpt.js",
+        "debug.js"
+      ],
+      "run_at": "document_end"
+    },
+    {
+      "matches": ["https://gemini.google.com/*"],
+      "css": ["css/content.css"],
+      "js": [
+        "js/core/compatibility.js",
+        "js/core/storage-manager.js",
+        "js/core/base.js",
+        "js/content_common.js",
+        "js/adapters/gemini.js",
+        "debug.js"
+      ],
+      "run_at": "document_end"
+    },
+    {
+      "matches": ["https://monica.im/*", "https://app.monica.im/*"],
+      "css": ["css/content.css"],
+      "js": [
+        "js/core/compatibility.js",
+        "js/core/storage-manager.js",
+        "js/core/base.js",
+        "js/content_common.js",
+        "js/adapters/monica.js",
+        "debug.js"
+      ],
+      "run_at": "document_end"
+    },
+    {
+      "matches": ["http://localhost:*/*"],
+      "js": ["debug.js"]
+    }
+  ],
+
+  "permissions": [
+    "storage",
+    "tabs",
+    "downloads",
+    "sidePanel"
+  ],
+
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://gemini.google.com/*",
+    "https://monica.im/*",
+    "https://app.monica.im/*"
+  ],
+
+  "side_panel": {
+    "default_path": "html/popup.html"
+  },
+
+  "action": {
+    "default_icon": {
+      "16": "icons/logo.svg",
+      "48": "icons/logo.svg",
+      "128": "icons/logo.svg"
+    }
+  },
+
+  "icons": {
+    "16": "icons/logo.svg",
+    "48": "icons/logo.svg",
+    "128": "icons/logo.svg"
+  },
+
+  "web_accessible_resources": [
+    {
+      "matches": ["<all_urls>"],
+      "resources": ["lib/*", "icons/*"]
+    }
+  ]
+}

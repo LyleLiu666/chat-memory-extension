@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat Memory - 测试页面</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .btn {
+            background: #4090FF;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .btn:hover {
+            background: #2563eb;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        #console-output {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔍 AI Chat Memory - 调试测试页面</h1>
+        <p>这个页面用于测试扩展的功能和诊断问题</p>
+    </div>
+
+    <div class="test-section">
+        <h2>🧪 基础功能测试</h2>
+        <button class="btn" onclick="testChromeAPI()">测试Chrome API</button>
+        <button class="btn" onclick="testStorageManager()">测试存储管理器</button>
+        <button class="btn" onclick="testIndexedDB()">测试IndexedDB</button>
+        <div id="basic-status" class="status info">等待测试...</div>
+    </div>
+
+    <div class="test-section">
+        <h2>📱 消息提取测试</h2>
+        <button class="btn" onclick="simulateChatGPT()">模拟ChatGPT页面</button>
+        <button class="btn" onclick="simulateGemini()">模拟Gemini页面</button>
+        <button class="btn" onclick="simulateMonica()">模拟Monica页面</button>
+        <div id="extract-status" class="status info">等待测试...</div>
+    </div>
+
+    <div class="test-section">
+        <h2>🌐 环境信息</h2>
+        <div id="env-info">
+            <p><strong>当前URL:</strong> <span id="current-url"></span></p>
+            <p><strong>用户代理:</strong> <span id="user-agent"></span></p>
+            <p><strong>Chrome Runtime:</strong> <span id="chrome-runtime"></span></p>
+            <p><strong>当前时间:</strong> <span id="current-time"></span></p>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>📋 控制台输出</h2>
+        <button class="btn" onclick="clearConsole()">清空控制台</button>
+        <div id="console-output"></div>
+    </div>
+
+    <script>
+        // 捕获控制台输出
+        const originalLog = console.log;
+        const originalError = console.error;
+        const originalWarn = console.warn;
+        const consoleOutput = document.getElementById('console-output');
+
+        function addToConsole(type, ...args) {
+            const timestamp = new Date().toLocaleTimeString();
+            const message = args.map(arg =>
+                typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+            ).join(' ');
+
+            const div = document.createElement('div');
+            div.style.color = type === 'error' ? '#ff6b6b' : type === 'warn' ? '#ffa500' : '#4dabf7';
+            div.textContent = `[${timestamp}] ${type.toUpperCase()}: ${message}`;
+            consoleOutput.appendChild(div);
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        }
+
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            addToConsole('log', ...args);
+        };
+
+        console.error = function(...args) {
+            originalError.apply(console, args);
+            addToConsole('error', ...args);
+        };
+
+        console.warn = function(...args) {
+            originalWarn.apply(console, args);
+            addToConsole('warn', ...args);
+        };
+
+        // 更新环境信息
+        function updateEnvInfo() {
+            document.getElementById('current-url').textContent = window.location.href;
+            document.getElementById('user-agent').textContent = navigator.userAgent.substring(0, 100) + '...';
+            document.getElementById('chrome-runtime').textContent = typeof chrome !== 'undefined' ? 'Available' : 'Not Available';
+            document.getElementById('current-time').textContent = new Date().toLocaleString();
+        }
+
+        // 测试函数
+        function showStatus(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = `status ${type}`;
+        }
+
+        async function testChromeAPI() {
+            try {
+                if (typeof chrome !== 'undefined' && chrome.runtime) {
+                    showStatus('basic-status', '✅ Chrome API 可用', 'success');
+                    console.log('Chrome Runtime ID:', chrome.runtime.id);
+
+                    // 测试存储
+                    const settings = await new Promise(resolve => {
+                        chrome.storage.sync.get(['settings'], resolve);
+                    });
+                    console.log('当前设置:', settings);
+                } else {
+                    showStatus('basic-status', '❌ Chrome API 不可用', 'error');
+                }
+            } catch (error) {
+                showStatus('basic-status', `❌ Chrome API 测试失败: ${error.message}`, 'error');
+            }
+        }
+
+        async function testStorageManager() {
+            try {
+                if (typeof StorageManager !== 'undefined') {
+                    const sm = new StorageManager();
+                    await sm.initDB();
+                    showStatus('basic-status', '✅ StorageManager 初始化成功', 'success');
+                    console.log('StorageManager 实例:', sm);
+                } else {
+                    showStatus('basic-status', '❌ StorageManager 不可用', 'error');
+                }
+            } catch (error) {
+                showStatus('basic-status', `❌ StorageManager 测试失败: ${error.message}`, 'error');
+            }
+        }
+
+        async function testIndexedDB() {
+            try {
+                const request = indexedDB.open('TestDB', 1);
+                request.onsuccess = function() {
+                    showStatus('basic-status', '✅ IndexedDB 可用', 'success');
+                    console.log('IndexedDB 测试成功');
+                };
+                request.onerror = function() {
+                    showStatus('basic-status', '❌ IndexedDB 不可用', 'error');
+                };
+            } catch (error) {
+                showStatus('basic-status', `❌ IndexedDB 测试失败: ${error.message}`, 'error');
+            }
+        }
+
+        function simulateChatGPT() {
+            // 修改URL以触发ChatGPT适配器
+            history.pushState({}, '', 'https://chatgpt.com/c/test-conversation');
+            showStatus('extract-status', '🔄 模拟ChatGPT环境...', 'info');
+
+            setTimeout(() => {
+                // 创建模拟的ChatGPT DOM结构
+                const main = document.createElement('main');
+                main.innerHTML = `
+                    <article>
+                        <div data-message-author-role="user">
+                            <div class="whitespace-pre-wrap">这是一条测试用户消息</div>
+                        </div>
+                    </article>
+                    <article>
+                        <div data-message-author-role="assistant">
+                            <div class="markdown prose">这是一条测试AI响应</div>
+                        </div>
+                    </article>
+                `;
+                document.body.appendChild(main);
+
+                showStatus('extract-status', '✅ ChatGPT环境模拟完成', 'success');
+                console.log('ChatGPT DOM结构已创建');
+            }, 1000);
+        }
+
+        function simulateGemini() {
+            history.pushState({}, '', 'https://gemini.google.com/app/test-conversation');
+            showStatus('extract-status', '🔄 模拟Gemini环境...', 'info');
+
+            setTimeout(() => {
+                const chatHistory = document.createElement('div');
+                chatHistory.id = 'chat-history';
+                chatHistory.innerHTML = `
+                    <div class="conversation-container">
+                        <user-query>
+                            <div class="query-text">Gemini测试用户消息</div>
+                        </user-query>
+                    </div>
+                    <div class="conversation-container">
+                        <model-response>
+                            <div class="model-response-text">Gemini测试AI响应</div>
+                        </model-response>
+                    </div>
+                `;
+                document.body.appendChild(chatHistory);
+
+                showStatus('extract-status', '✅ Gemini环境模拟完成', 'success');
+                console.log('Gemini DOM结构已创建');
+            }, 1000);
+        }
+
+        function simulateMonica() {
+            history.pushState({}, '', 'https://monica.im/chat/test-conversation');
+            showStatus('extract-status', '🔄 模拟Monica环境...', 'info');
+
+            setTimeout(() => {
+                const container = document.createElement('div');
+                container.className = 'chat-container';
+                container.innerHTML = `
+                    <div class="message">
+                        <div class="message-content">Monica测试用户消息</div>
+                    </div>
+                    <div class="message">
+                        <div class="message-content">Monica测试AI响应</div>
+                    </div>
+                `;
+                document.body.appendChild(container);
+
+                showStatus('extract-status', '✅ Monica环境模拟完成', 'success');
+                console.log('Monica DOM结构已创建');
+            }, 1000);
+        }
+
+        function clearConsole() {
+            consoleOutput.innerHTML = '';
+        }
+
+        // 初始化
+        updateEnvInfo();
+        setInterval(updateEnvInfo, 1000);
+
+        // 加载调试脚本
+        const debugScript = document.createElement('script');
+        debugScript.src = 'debug.js';
+        document.head.appendChild(debugScript);
+
+        console.log('🧪 测试页面加载完成');
+    </script>
+</body>
+</html>
