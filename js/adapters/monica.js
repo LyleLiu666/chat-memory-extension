@@ -586,7 +586,34 @@ class MonicaAdapter extends BasePlatformAdapter {
   extractFormattedContent(element) {
     if (!element) return '';
 
-    const textContent = element.innerText || element.textContent || '';
+    // 克隆节点以避免真实DOM被修改
+    const clone = element.cloneNode(true);
+
+    // 移除Monica界面上的工具按钮、模型切换区域等噪声元素
+    const noiseSelectors = [
+      '[class*="model-compare"]',
+      '[class*="compare-header"]',
+      '[class*="message-toolbar"]',
+      '[class*="toolbar--"]',
+      '[class*="monica-btn"]',
+      '[class*="bot-icons"]',
+      '[class*="popover-content"]',
+      '[class*="close-btn"]',
+      '[class*="reply-maker"]',
+      '[class*="badge--"]',
+      '[class*="share-button"]',
+      '[data-testid*="message-toolbar"]'
+    ];
+
+    try {
+      noiseSelectors.forEach(selector => {
+        clone.querySelectorAll(selector).forEach(node => node.remove());
+      });
+    } catch (error) {
+      console.warn('AI Chat Memory: 清理Monica噪声元素时出错', error);
+    }
+
+    const textContent = clone.innerText || clone.textContent || '';
 
     return textContent
       .split('\n')

@@ -525,6 +525,16 @@ class PopupManager {
       { label: '删除对话', action: () => this.deleteConversation(conversationId) }
     ];
 
+    let closeMenuHandler;
+    const removeMenu = () => {
+      if (menu && menu.parentNode) {
+        document.body.removeChild(menu);
+      }
+      if (closeMenuHandler) {
+        document.removeEventListener('click', closeMenuHandler);
+      }
+    };
+
     menuItems.forEach(item => {
       const menuItem = document.createElement('div');
       menuItem.textContent = item.label;
@@ -540,21 +550,24 @@ class PopupManager {
       menuItem.addEventListener('mouseleave', () => {
         menuItem.style.background = 'transparent';
       });
-      menuItem.addEventListener('click', item.action);
+      menuItem.addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeMenu();
+        item.action();
+      });
       menu.appendChild(menuItem);
     });
 
     document.body.appendChild(menu);
 
     // 点击其他地方关闭菜单
-    const closeMenu = (e) => {
-      if (menu && menu.parentNode && !menu.contains(e.target)) {
-        document.body.removeChild(menu);
-        document.removeEventListener('click', closeMenu);
+    closeMenuHandler = (e) => {
+      if (!menu.contains(e.target)) {
+        removeMenu();
       }
     };
     setTimeout(() => {
-      document.addEventListener('click', closeMenu);
+      document.addEventListener('click', closeMenuHandler);
     }, 100);
   }
 
@@ -564,6 +577,7 @@ class PopupManager {
       try {
         await navigator.clipboard.writeText(conversation.link);
         this.showNotification('链接已复制到剪贴板', 'success');
+        this.closePopupWindow();
       } catch (error) {
         console.error('复制失败:', error);
         this.showNotification('复制失败', 'error');
@@ -599,6 +613,7 @@ class PopupManager {
         // 重新渲染
         this.render();
         this.showNotification('对话已删除', 'success');
+        this.closePopupWindow();
 
       } else {
         throw new Error('Chrome Runtime API不可用');
@@ -760,6 +775,18 @@ class PopupManager {
         notification.parentNode.removeChild(notification);
       }
     }, 3000);
+  }
+
+  closePopupWindow() {
+    if (typeof window !== 'undefined' && typeof window.close === 'function') {
+      setTimeout(() => {
+        try {
+          window.close();
+        } catch (error) {
+          console.warn('关闭弹窗失败:', error);
+        }
+      }, 0);
+    }
   }
 
   getPlatformDisplayName(platform) {
