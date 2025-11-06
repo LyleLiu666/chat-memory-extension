@@ -13,6 +13,8 @@ class BasePlatformAdapter {
     this.lastCheckTime = 0;
     this.isChecking = false;
     this.contentObserver = null;
+    this.bootstrapObserver = null;
+    this.bootstrapTimeout = null;
 
     this.CHECK_INTERVAL = 2000;
     this.currentMessagesMap = new Map();
@@ -171,8 +173,9 @@ class BasePlatformAdapter {
       })
       .then((conversationId) => {
         if (!conversationId) {
-          console.log('AI Chat Memory: No conversation ID found or created. Halting initialization.');
-          return Promise.reject('No conversation ID');
+          console.log('AI Chat Memory: 暂无可用会话，启用引导观察器等待内容加载');
+          this.setupBootstrapObserver();
+          return 'bootstrapping';
         }
         this.currentConversationId = conversationId;
         console.log('AI Chat Memory: 当前会话ID:', this.currentConversationId);
@@ -186,7 +189,7 @@ class BasePlatformAdapter {
         }
       })
       .then((saveResult) => {
-        if (!this.currentConversationId) return;
+        if (!this.currentConversationId) return; // 处于引导模式时跳过
 
         if (window.aiChatMemorySettings && window.aiChatMemorySettings.autoSave) {
           console.log('AI Chat Memory: 自动保存模式 - 设置内容变化监听器');
@@ -196,10 +199,81 @@ class BasePlatformAdapter {
         }
       })
       .catch(error => {
-        if (error !== 'No conversation ID') {
-          console.error('AI Chat Memory: Initialization failed:', error);
-        }
+        console.error('AI Chat Memory: Initialization failed:', error);
       });
+  }
+
+  /**
+   * 当页面初始未能创建/获取会话时，监听内容加载后再创建
+   */
+  setupBootstrapObserver() {
+    this.clearBootstrapObserver();
+
+    const tryBootstrap = async () => {
+      try {
+        const msgs = this.extractMessages();
+        if (msgs && msgs.length > 0) {
+          // 一旦消息出现，尝试创建或查找并进入正常保存流
+          const convId = await this.findOrCreateConversation();
+          if (convId) {
+            this.currentConversationId = convId;
+            console.log('AI Chat Memory: 引导完成，当前会话ID:', convId);
+            if (window.aiChatMemorySettings && window.aiChatMemorySettings.autoSave) {
+              await this.saveAllMessages();
+              this.contentObserver = this.setupMutationObserver();
+            }
+            this.clearBootstrapObserver();
+          }
+        }
+      } catch (e) {
+        // 忽略，等待后续变更
+      }
+    };
+
+    // 监听 DOM 变化直到拿到消息
+    this.bootstrapObserver = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        if (m.type === 'childList') {
+          for (const n of m.addedNodes) {
+            if (n.nodeType === Node.ELEMENT_NODE && this.isMessageElement(n)) {
+              tryBootstrap();
+              return;
+            }
+          }
+        } else if (m.type === 'characterData') {
+          let t = m.target;
+          while (t && t !== document.body) {
+            if (this.isMessageElement(t)) {
+              tryBootstrap();
+              return;
+            }
+            t = t.parentNode;
+          }
+        }
+      }
+    });
+
+    this.bootstrapObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
+
+    // 兜底定时器，防止长时间占用
+    this.bootstrapTimeout = setTimeout(() => {
+      console.log('AI Chat Memory: 引导观察器超时，停止等待');
+      this.clearBootstrapObserver();
+    }, 30000);
+
+    // 初始试探一次（有些页面初始就有消息）
+    tryBootstrap();
+  }
+
+  clearBootstrapObserver() {
+    if (this.bootstrapObserver) {
+      try { this.bootstrapObserver.disconnect(); } catch (_) {}
+      this.bootstrapObserver = null;
+    }
+    if (this.bootstrapTimeout) {
+      try { clearTimeout(this.bootstrapTimeout); } catch (_) {}
+      this.bootstrapTimeout = null;
+    }
   }
 
   /**
@@ -232,19 +306,13 @@ class BasePlatformAdapter {
 
           // 检查扩展ID；若缺失，视为上下文无效并有限次重试，否则回退到本地存储
           if (!chrome.runtime.id) {
-            console.warn('AI Chat Memory: 扩展ID为空，视为扩展上下文无效');
-            if (retryCount < MAX_RUNTIME_ID_RETRY) {
-              const delay = Math.min(3000, RETRY_DELAY_BASE * (retryCount + 1));
-              console.log(`AI Chat Memory: 扩展ID缺失，${delay}ms 后重试 (${retryCount + 1}/${MAX_RUNTIME_ID_RETRY})`);
-              setTimeout(() => {
-                this.connectToDatabase(retryCount + 1)
-                  .then(resolve)
-                  .catch(reject);
-              }, delay);
-            } else {
-              console.warn('AI Chat Memory: 扩展ID在多次重试后仍为空，回退到本地存储模式');
-              this.fallbackToLocalStorage(resolve, reject);
+            // 在部分场景（调试/注入运行）下，内容脚本不在扩展上下文中
+            // 直接静默回退到本地存储，避免日志刷屏与无意义重试
+            if (!this.__loggedNoRuntimeIdOnce) {
+              console.warn('AI Chat Memory: 扩展ID为空，改用本地存储模式');
+              this.__loggedNoRuntimeIdOnce = true;
             }
+            this.fallbackToLocalStorage(resolve, reject);
             return;
           }
 
@@ -1304,32 +1372,23 @@ class BasePlatformAdapter {
     // 添加重试机制
     const retryInit = (retryCount = 0) => {
       try {
-        // 检查扩展上下文
-        if (this.canUseExtensionAPI()) {
-          console.log(`AI Chat Memory: 扩展上下文有效，开始初始化 (${retryCount}/5)`);
-          this.init();
-          this.setupEventListeners();
-          this.setupPageUnloadDetection();
-          this.initialBoot();
-        } else {
-          throw new Error('扩展上下文不可用');
+        // 如果扩展不可用，立即切换到本地模式而不是多次重试
+        if (!this.canUseExtensionAPI()) {
+          this.forceLocalStorageMode = true;
+          console.log('AI Chat Memory: 扩展上下文不可用，直接使用本地存储模式');
         }
-      } catch (error) {
-        console.warn(`AI Chat Memory: 初始化失败 (${retryCount}/5):`, error.message);
 
-        if (retryCount < 5) {
-          setTimeout(() => retryInit(retryCount + 1), 1000 * (retryCount + 1));
-        } else {
-          console.error('AI Chat Memory: 达到最大重试次数，初始化失败');
-          // 即使扩展API不可用，也尝试使用本地存储
-          if (this.storageManager) {
-            console.log('AI Chat Memory: 尝试使用本地存储模式');
-            this.init();
-            this.setupEventListeners();
-            this.setupPageUnloadDetection();
-            this.initialBoot();
-          }
-        }
+        this.init();
+        this.setupEventListeners();
+        this.setupPageUnloadDetection();
+        this.initialBoot();
+      } catch (error) {
+        console.warn(`AI Chat Memory: 初始化失败，使用本地模式继续: ${error.message}`);
+        this.forceLocalStorageMode = true;
+        this.init();
+        this.setupEventListeners();
+        this.setupPageUnloadDetection();
+        this.initialBoot();
       }
     };
 

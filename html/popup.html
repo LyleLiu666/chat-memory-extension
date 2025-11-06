@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Chat Memory</title>
+    <title>Mem-ai</title>
     <link rel="stylesheet" href="../css/content.css">
     <style>
         *, *::before, *::after {
@@ -45,20 +45,59 @@
             margin-bottom: 20px;
             padding-bottom: 12px;
             border-bottom: 1px solid #e5e7eb;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            flex: 1;
+            min-width: 0;
         }
 
         .logo {
             display: flex;
             align-items: center;
             gap: 8px;
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 600;
             color: #4090FF;
         }
 
         .logo img {
-            width: 24px;
-            height: 24px;
+            width: 22px;
+            height: 22px;
+        }
+
+        .header-stats {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .header-stat {
+            display: flex;
+            align-items: center;
+            font-size: 12px;
+            color: #6b7280;
+        }
+
+        .header-stat-label {
+            font-weight: 500;
+        }
+
+        .header-stat-label::after {
+            content: '-';
+            margin: 0 4px;
+            color: #9ca3af;
+        }
+
+        .header-stat-value {
+            font-weight: 600;
+            color: #4090FF;
         }
 
         .settings-btn {
@@ -73,32 +112,6 @@
 
         .settings-btn:hover {
             color: #4090FF;
-        }
-
-        .stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-            gap: 16px;
-        }
-
-        .stat-card {
-            background: #ffffff;
-            padding: 16px;
-            border-radius: 8px;
-            border: 1px solid #e5e7eb;
-            text-align: center;
-        }
-
-        .stat-value {
-            font-size: 24px;
-            font-weight: bold;
-            color: #4090FF;
-            margin-bottom: 4px;
-        }
-
-        .stat-label {
-            font-size: 12px;
-            color: #6b7280;
         }
 
         .conversations {
@@ -751,9 +764,21 @@
 <body>
     <div class="container">
         <header class="header">
-            <div class="logo">
-                <img src="../icons/logo.svg" alt="AI Chat Memory" />
-                <span>AI Chat Memory</span>
+            <div class="header-left">
+                <div class="logo">
+                    <img src="../icons/logo.svg" alt="Mem-ai" />
+                    <span>Mem-ai</span>
+                </div>
+                <div class="header-stats">
+                    <div class="header-stat">
+                        <span class="header-stat-label">总会话数</span>
+                        <span class="header-stat-value" id="totalConversations">-</span>
+                    </div>
+                    <div class="header-stat">
+                        <span class="header-stat-label">今日新增</span>
+                        <span class="header-stat-value" id="todayConversations">-</span>
+                    </div>
+                </div>
             </div>
             <button class="settings-btn" title="设置">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -762,20 +787,7 @@
             </button>
         </header>
 
-        <section class="stats">
-            <div class="stat-card">
-                <div class="stat-value" id="totalConversations">-</div>
-                <div class="stat-label">总会话数</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value" id="todayConversations">-</div>
-                <div class="stat-label">今日新增</div>
-            </div>
-        </section>
-
         <section class="conversations">
-            <h2 class="section-title">最近对话</h2>
-
             <div class="search-bar">
                 <input type="text" class="search-input" id="searchInput" placeholder="搜索对话...">
                 <span class="search-icon">🔍</span>
