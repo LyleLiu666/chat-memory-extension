@@ -150,7 +150,12 @@ class MonicaAdapter extends BasePlatformAdapter {
       '.chat-item',
       '.message-item',
       '.message-bubble',
-      '.chat-bubble'
+      '.chat-bubble',
+      // 新版类名（模糊匹配）
+      '[class*="chat-message"]',
+      '[class*="message--"]',
+      '[class*="chat-question"]',
+      '[class*="chat-answer"]'
     ];
 
     // 检查当前元素
@@ -278,17 +283,24 @@ class MonicaAdapter extends BasePlatformAdapter {
    */
   findChatContainer() {
     const containerSelectors = [
+      // 常规类名
       '.chat-container',
       '.conversation-container',
       '.messages-container',
       '.chat-messages',
       '.conversation-messages',
+      '.chat-main',
+      '.conversation-main',
       '#chat-container',
       '#messages-container',
       '[data-testid*="chat-container"]',
       '[data-testid*="messages-container"]',
-      '.chat-main',
-      '.conversation-main'
+      // Monica 新版常见 BEM/哈希类名（使用模糊匹配）
+      '[class*="chat-items-container"]',
+      '[class*="chat-items"]',
+      '[class*="chat-body"]',
+      '[class*="chat-content"]',
+      '[class*="chat-root"]'
     ];
 
     for (const selector of containerSelectors) {
@@ -298,14 +310,41 @@ class MonicaAdapter extends BasePlatformAdapter {
       }
     }
 
-    // 回退到查找包含大量消息元素的容器
-    const allElements = document.querySelectorAll('*');
-    for (const element of allElements) {
-      const messageCount = element.querySelectorAll('.message, .chat-message, [data-testid*="message"]').length;
-      if (messageCount > 2) { // 如果一个容器包含超过2个消息元素，很可能是聊天容器
-        return element;
+    // 回退1：查找包含大量消息元素的容器（模糊匹配类名）
+    try {
+      const allElements = document.querySelectorAll('*');
+      for (const element of allElements) {
+        const messageCount = element.querySelectorAll('[class*="chat-message"], [class*="message--"], [data-testid*="message"]').length;
+        if (messageCount > 2) {
+          return element;
+        }
       }
-    }
+    } catch (_) {}
+
+    // 回退2：在可访问的 iframe 中查找（同源）
+    try {
+      const iframes = document.querySelectorAll('iframe');
+      for (const iframe of Array.from(iframes)) {
+        let doc = null;
+        try {
+          doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document);
+        } catch (_) {
+          // 跨域无法访问
+          doc = null;
+        }
+        if (!doc) continue;
+
+        for (const selector of containerSelectors) {
+          const candidate = doc.querySelector(selector);
+          if (candidate) return candidate;
+        }
+
+        const richContainer = Array.from(doc.querySelectorAll('*')).find(el =>
+          el.querySelectorAll('[class*="chat-message"], [class*="message--"], [data-testid*="message"]').length > 2
+        );
+        if (richContainer) return richContainer;
+      }
+    } catch (_) {}
 
     return null;
   }
@@ -321,7 +360,12 @@ class MonicaAdapter extends BasePlatformAdapter {
       '[data-testid*="message"]',
       '.msg-item',
       '.chat-item',
-      '.message-item'
+      '.message-item',
+      // 模糊匹配新版类名
+      '[class*="chat-message"]',
+      '[class*="message--"]',
+      '[class*="chat-question"]',
+      '[class*="chat-answer"]'
     ];
 
     let messageElements = [];
@@ -336,7 +380,7 @@ class MonicaAdapter extends BasePlatformAdapter {
 
     // 如果没有找到消息元素，尝试更通用的方法
     if (messageElements.length === 0) {
-      messageElements = Array.from(container.children).filter(child => this.isMessageElement(child));
+      messageElements = Array.from(container.querySelectorAll('*')).filter(child => this.isMessageElement(child));
     }
 
     return messageElements;
@@ -386,7 +430,10 @@ class MonicaAdapter extends BasePlatformAdapter {
       'from-user',
       'outgoing',
       'sent',
-      'message-user'
+      'message-user',
+      // Monica 常见
+      'chat-question',
+      'layout-right'
     ];
 
     // AI消息的常见标识
@@ -398,7 +445,10 @@ class MonicaAdapter extends BasePlatformAdapter {
       'incoming',
       'received',
       'message-ai',
-      'message-assistant'
+      'message-assistant',
+      // Monica 常见
+      'chat-answer',
+      'layout-left'
     ];
 
     const lowerClasses = elementClasses.toLowerCase();
@@ -436,7 +486,7 @@ class MonicaAdapter extends BasePlatformAdapter {
     }
 
     // 回退策略：假设第一个消息是用户消息，交替判断
-    const previousMessages = document.querySelectorAll('.message, .chat-message, [data-testid*="message"]');
+    const previousMessages = document.querySelectorAll('.message, .chat-message, [data-testid*="message"], [class*="chat-message"], [class*="message--"], [class*="chat-question"], [class*="chat-answer"]');
     const currentIndex = Array.from(previousMessages).indexOf(element);
 
     if (currentIndex === 0) {
@@ -458,7 +508,12 @@ class MonicaAdapter extends BasePlatformAdapter {
       '.msg-text',
       '.message-text',
       '[data-testid*="content"]',
-      '[data-testid*="text"]'
+      '[data-testid*="text"]',
+      // 模糊匹配
+      '[class*="message-content"]',
+      '[class*="chat-content"]',
+      '[class*="text-content"]',
+      '[class*="message-text"]'
     ];
 
     for (const selector of contentSelectors) {
