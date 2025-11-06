@@ -6,7 +6,7 @@
 class StorageManager {
   constructor() {
     this.DB_NAME = 'AIChatMemoryDB';
-    this.DB_VERSION = 1;
+    this.DB_VERSION = 2;
     this.CONVERSATION_STORE = 'conversations';
     this.db = null;
   }
@@ -25,13 +25,27 @@ class StorageManager {
       request.onupgradeneeded = (event) => {
         const db = event.target.result;
 
+        let conversationStore;
         if (!db.objectStoreNames.contains(this.CONVERSATION_STORE)) {
-          const conversationStore = db.createObjectStore(this.CONVERSATION_STORE, { keyPath: 'conversationId' });
-          conversationStore.createIndex('link', 'link', { unique: false });
-          conversationStore.createIndex('platform', 'platform', { unique: false });
-          conversationStore.createIndex('updatedAt', 'updatedAt', { unique: false });
-          conversationStore.createIndex('createdAt', 'createdAt', { unique: false });
+          conversationStore = db.createObjectStore(this.CONVERSATION_STORE, { keyPath: 'conversationId' });
+        } else {
+          // 在升级事务中获取已存在的对象存储
+          conversationStore = event.target.transaction.objectStore(this.CONVERSATION_STORE);
         }
+
+        const ensureIndex = (store, name, keyPath, options = { unique: false }) => {
+          if (!store.indexNames.contains(name)) {
+            store.createIndex(name, keyPath, options);
+          }
+        };
+
+        // 确保所有需要的索引都存在
+        ensureIndex(conversationStore, 'link', 'link');
+        ensureIndex(conversationStore, 'platform', 'platform');
+        ensureIndex(conversationStore, 'updatedAt', 'updatedAt');
+        ensureIndex(conversationStore, 'createdAt', 'createdAt');
+        // 新增：基于外部会话ID（平台原始ID）的索引，用于避免不同会话被同一URL覆盖
+        ensureIndex(conversationStore, 'externalId', 'externalId');
       };
 
       request.onsuccess = (event) => {
@@ -145,6 +159,35 @@ class StorageManager {
       const store = transaction.objectStore(this.CONVERSATION_STORE);
       const index = store.index('link');
       const request = index.get(url);
+
+      request.onsuccess = () => {
+        resolve(request.result || null);
+      };
+
+      request.onerror = (event) => {
+        reject(event.target.error);
+      };
+    });
+  }
+
+  /**
+   * 根据外部ID（平台原始对话ID）查找会话
+   */
+  async findConversationByExternalId(externalId) {
+    const db = await this.getDB();
+
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([this.CONVERSATION_STORE], 'readonly');
+      const store = transaction.objectStore(this.CONVERSATION_STORE);
+      let index;
+      try {
+        index = store.index('externalId');
+      } catch (e) {
+        // 旧版本数据库没有该索引，直接返回null
+        resolve(null);
+        return;
+      }
+      const request = index.get(externalId);
 
       request.onsuccess = () => {
         resolve(request.result || null);

@@ -380,14 +380,14 @@ class BasePlatformAdapter {
    */
   async findConversation() {
     return new Promise((resolve, reject) => {
-      const conversationId = this.lastKnownConversationId;
+      const externalId = this.lastKnownConversationId;
 
-      if (conversationId && !conversationId.startsWith('new_conversation_')) {
-        console.log(`AI Chat Memory: 使用对话ID查询会话: ${conversationId}`);
-        this.getConversationById(conversationId)
+      if (externalId && !externalId.startsWith('new_conversation_')) {
+        console.log(`AI Chat Memory: 使用外部ID查询会话: ${externalId}`);
+        this.findConversationByExternalId(externalId)
           .then(conversation => {
             if (conversation) {
-              console.log(`AI Chat Memory: 通过ID找到会话: ${conversation.conversationId}`);
+              console.log(`AI Chat Memory: 通过外部ID找到会话: ${conversation.conversationId}`);
               resolve(conversation.conversationId);
               return;
             }
@@ -414,6 +414,13 @@ class BasePlatformAdapter {
       this.sendMessageWithRetry({type: 'findConversationByUrl', url: cleanUrl})
         .then(response => {
           if (response && response.conversation) {
+            const extId = this.lastKnownConversationId;
+            // 若存在外部ID且与已存记录外部ID不一致，视为不同会话，不复用
+            if (extId && response.conversation.externalId && response.conversation.externalId !== extId) {
+              console.log('AI Chat Memory: URL匹配到的会话外部ID不同，忽略此会话');
+              resolve(null);
+              return;
+            }
             console.log(`AI Chat Memory: 通过URL找到会话: ${response.conversation.conversationId}`);
             resolve(response.conversation.conversationId);
           } else {
@@ -429,6 +436,12 @@ class BasePlatformAdapter {
       this.storageManager.findConversationByUrl(cleanUrl)
         .then(conversation => {
           if (conversation) {
+            const extId = this.lastKnownConversationId;
+            if (extId && conversation.externalId && conversation.externalId !== extId) {
+              console.log('AI Chat Memory: URL匹配到的会话外部ID不同，忽略此会话');
+              resolve(null);
+              return;
+            }
             console.log(`AI Chat Memory: 通过URL找到会话: ${conversation.conversationId}`);
             resolve(conversation.conversationId);
           } else {
@@ -534,15 +547,15 @@ class BasePlatformAdapter {
    * 处理对话的核心逻辑
    */
   processConversation(messages, resolve, reject) {
-    const conversationId = this.lastKnownConversationId;
-    const isNewConversation = conversationId && conversationId.startsWith('new_conversation_');
+    const externalId = this.lastKnownConversationId;
+    const isNewConversation = externalId && externalId.startsWith('new_conversation_');
 
-    if (conversationId && !isNewConversation) {
-      console.log(`AI Chat Memory: 使用对话ID查询会话: ${conversationId}`);
-      this.getConversationById(conversationId)
+    if (externalId && !isNewConversation) {
+      console.log(`AI Chat Memory: 使用外部ID查询会话: ${externalId}`);
+      this.findConversationByExternalId(externalId)
         .then(conversation => {
           if (conversation) {
-            console.log(`AI Chat Memory: 通过ID找到会话: ${conversation.conversationId}`);
+            console.log(`AI Chat Memory: 通过外部ID找到会话: ${conversation.conversationId}`);
             resolve(conversation.conversationId);
             return;
           }
@@ -571,7 +584,20 @@ class BasePlatformAdapter {
             console.warn('AI Chat Memory: URL查询失败，将尝试双重检查:', chrome.runtime.lastError);
             this.doubleCheckBeforeCreate(messages, cleanUrl, resolve, reject);
           } else if (response && response.conversation) {
+            const extId = this.lastKnownConversationId;
+            if (extId && response.conversation.externalId && response.conversation.externalId !== extId) {
+              console.log('AI Chat Memory: URL匹配到的会话外部ID不同，将创建新会话');
+              this.doubleCheckBeforeCreate(messages, cleanUrl, resolve, reject);
+              return;
+            }
             console.log(`AI Chat Memory: 通过URL找到会话: ${response.conversation.conversationId}`);
+            // 如有外部ID但记录缺失，补写外部ID，避免后续覆盖
+            if (extId && !response.conversation.externalId) {
+              try {
+                response.conversation.externalId = extId;
+                chrome.runtime.sendMessage({ type: 'updateConversation', conversation: response.conversation }, () => {});
+              } catch (_) {}
+            }
             resolve(response.conversation.conversationId);
           } else {
             // 在创建新对话前再次检查，防止竞争条件
@@ -586,7 +612,19 @@ class BasePlatformAdapter {
       this.storageManager.findConversationByUrl(cleanUrl)
         .then(conversation => {
           if (conversation) {
+            const extId = this.lastKnownConversationId;
+            if (extId && conversation.externalId && conversation.externalId !== extId) {
+              console.log('AI Chat Memory: URL匹配到的会话外部ID不同，将创建新会话');
+              this.doubleCheckBeforeCreate(messages, cleanUrl, resolve, reject);
+              return;
+            }
             console.log(`AI Chat Memory: 通过URL找到会话: ${conversation.conversationId}`);
+            if (extId && !conversation.externalId && this.storageManager && this.storageManager.updateConversation) {
+              try {
+                conversation.externalId = extId;
+                this.storageManager.updateConversation(conversation);
+              } catch (_) {}
+            }
             resolve(conversation.conversationId);
           } else {
             // 在创建新对话前再次检查，防止竞争条件
@@ -615,7 +653,20 @@ class BasePlatformAdapter {
             console.warn('AI Chat Memory: 双重检查URL查询失败，改为创建新会话:', chrome.runtime.lastError);
             this.createNewConversation(messages, cleanUrl, resolve, reject);
           } else if (response && response.conversation) {
+            const extId = this.lastKnownConversationId;
+            if (extId && response.conversation.externalId && response.conversation.externalId !== extId) {
+              console.log('AI Chat Memory: 双重检查发现URL归属其他外部ID，继续创建新会话');
+              this.createNewConversation(messages, cleanUrl, resolve, reject);
+              return;
+            }
             console.log(`AI Chat Memory: 双重检查找到现有会话: ${response.conversation.conversationId}`);
+            // 如外部ID缺失则补写
+            if (extId && !response.conversation.externalId) {
+              try {
+                response.conversation.externalId = extId;
+                chrome.runtime.sendMessage({ type: 'updateConversation', conversation: response.conversation }, () => {});
+              } catch (_) {}
+            }
             resolve(response.conversation.conversationId);
           } else {
             console.log(`AI Chat Memory: 确认需要创建新会话: ${cleanUrl}`);
@@ -630,7 +681,19 @@ class BasePlatformAdapter {
       this.storageManager.findConversationByUrl(cleanUrl)
         .then(conversation => {
           if (conversation) {
+            const extId = this.lastKnownConversationId;
+            if (extId && conversation.externalId && conversation.externalId !== extId) {
+              console.log('AI Chat Memory: 双重检查发现URL归属其他外部ID，继续创建新会话');
+              this.createNewConversation(messages, cleanUrl, resolve, reject);
+              return;
+            }
             console.log(`AI Chat Memory: 双重检查找到现有会话: ${conversation.conversationId}`);
+            if (extId && !conversation.externalId && this.storageManager && this.storageManager.updateConversation) {
+              try {
+                conversation.externalId = extId;
+                this.storageManager.updateConversation(conversation);
+              } catch (_) {}
+            }
             resolve(conversation.conversationId);
           } else {
             console.log(`AI Chat Memory: 确认需要创建新会话: ${cleanUrl}`);
@@ -702,6 +765,31 @@ class BasePlatformAdapter {
       console.error('AI Chat Memory: 创建对话失败:', error);
       reject(error);
     }
+  }
+
+  /**
+   * 通过外部ID查找会话
+   */
+  async findConversationByExternalId(externalId) {
+    // 优先使用 Chrome extension API
+    if (this.canUseExtensionAPI()) {
+      try {
+        const response = await this.sendMessageWithRetry({ type: 'findConversationByExternalId', externalId });
+        return response ? (response.conversation || null) : null;
+      } catch (error) {
+        console.warn('AI Chat Memory: 按外部ID获取会话失败，回退到本地存储:', error);
+        if (/Extension context invalidated/i.test(String(error && error.message))) {
+          this.forceLocalStorageMode = true;
+        }
+        if (this.storageManager && this.storageManager.findConversationByExternalId) {
+          return await this.storageManager.findConversationByExternalId(externalId);
+        }
+        return null;
+      }
+    } else if (this.storageManager && this.storageManager.findConversationByExternalId) {
+      return await this.storageManager.findConversationByExternalId(externalId);
+    }
+    return null;
   }
 
   /**
@@ -981,6 +1069,19 @@ class BasePlatformAdapter {
           // 合并消息
           existingConversation.messages = currentMessages;
           existingConversation.updatedAt = new Date().toISOString();
+
+          // Monica: 当标题为空或为通用站点标题时，尝试用更有意义的标题更新
+          if (this.platform === 'monica') {
+            const newTitle = this.extractTitle() || this.generateTitleFromMessages(currentMessages);
+            const isGeneric = (t) => {
+              if (!t) return true;
+              const s = String(t).trim();
+              return /^Monica(\s*[-|—].*)?$/i.test(s) || /Your ChatGPT AI Assistant/i.test(s) || /Chrome Extension/i.test(s);
+            };
+            if ((!existingConversation.title || isGeneric(existingConversation.title)) && newTitle) {
+              existingConversation.title = newTitle;
+            }
+          }
 
           const updateResponse = await this.sendMessageWithRetry({
             type: 'updateConversation',

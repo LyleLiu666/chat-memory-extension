@@ -41,10 +41,11 @@ class MonicaAdapter extends BasePlatformAdapter {
 
       // 有效的对话页面通常包含chat、conversation或类似路径
       const validPatterns = [
-        /\/chat/,
-        /\/conversation/,
-        /\/c\/|\/t\//,  // 可能的对话ID路径
-        /\/\w+$/  // 以单个标识符结尾的路径
+        /\/chat(\/|$)/,
+        /\/conversation(\/|$)/,
+        /^\/home\/chat(\/|$)/,
+        /\/c\//,
+        /\/t\//
       ];
 
       return validPatterns.some(pattern => pattern.test(pathname));
@@ -80,47 +81,37 @@ class MonicaAdapter extends BasePlatformAdapter {
       let conversationId = null;
 
       // 优先使用 query 参数（例如 convId）
-      const qpConvId = searchParams.get('convId') || searchParams.get('conversationId') || searchParams.get('cid');
+      const qpConvIdRaw = searchParams.get('convId') || searchParams.get('conversationId') || searchParams.get('cid');
+      const qpConvId = qpConvIdRaw ? decodeURIComponent(qpConvIdRaw) : null;
       if (qpConvId && typeof qpConvId === 'string') {
         conversationId = qpConvId;
       }
 
       // 常见的Monica对话URL模式
       if (!conversationId && pathSegments.length >= 2) {
-        if (pathSegments[0] === 'chat' && pathSegments[1]) {
-          conversationId = pathSegments[1];
+        const seg0 = pathSegments[0];
+        const seg1 = pathSegments[1];
+        const looksLikeConv = (s) => typeof s === 'string' && (/^conv[_:]/.test(s) || /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(s));
+
+        if ((seg0 === 'chat' || seg0 === 'conversation' || seg0 === 'c' || seg0 === 't') && looksLikeConv(seg1)) {
+          conversationId = seg1;
         }
-        else if (pathSegments[0] === 'conversation' && pathSegments[1]) {
-          conversationId = pathSegments[1];
-        }
-        else if (pathSegments[0] === 'c' && pathSegments[1]) {
-          conversationId = pathSegments[1];
-        }
-        else if (pathSegments[0] === 't' && pathSegments[1]) {
-          conversationId = pathSegments[1];
-        }
-        // /home/chat/... 这种路径
-        else if (pathSegments[0] === 'home' && pathSegments[1] === 'chat') {
-          // 尽可能使用后续段拼成稳定ID
-          const rest = pathSegments.slice(2).filter(Boolean).join('_');
-          if (rest) conversationId = rest;
-        }
-        // 如果只有一个段且看起来像ID
-        else if (pathSegments.length === 1 && pathSegments[0] && /^[a-zA-Z0-9_-]+$/.test(pathSegments[0])) {
-          conversationId = pathSegments[0];
-        }
+        // 不再从 /home/chat/... 的其他段构造ID，避免误判
       }
 
-      // 兜底：若仍未提取到，使用完整路径（去除斜杠）作为对话ID
+      // 不再使用路径兜底为ID，等待真正的会话ID出现，避免混淆
       const sanitize = (s) => (s || '').replace(/[\/:?&=#%]/g, '_');
-      if (!conversationId && pathWithoutLeadingSlash) {
-        conversationId = pathWithoutLeadingSlash;
-      }
 
       if (conversationId) {
         // 统一清理，保证ID稳定
-        result.conversationId = sanitize(conversationId);
-        console.log(`AI Chat Memory: 提取到Monica对话ID: ${result.conversationId}`);
+        const sanitized = sanitize(conversationId);
+        result.conversationId = sanitized;
+        // 避免重复刷屏日志，仅在变化时记录
+        this._lastLoggedConversationId = this._lastLoggedConversationId || null;
+        if (this._lastLoggedConversationId !== sanitized) {
+          console.log(`AI Chat Memory: 提取到Monica对话ID: ${sanitized}`);
+          this._lastLoggedConversationId = sanitized;
+        }
       }
 
       return result;
@@ -201,16 +192,7 @@ class MonicaAdapter extends BasePlatformAdapter {
    * @returns {string|null} - 提取的标题或null
    */
   extractTitle() {
-    // 尝试从页面标题获取
-    const titleElement = document.querySelector('title');
-    if (titleElement && titleElement.textContent.trim()) {
-      const title = titleElement.textContent.trim();
-      if (title && title !== 'Monica' && !title.includes('Monica AI') && title.length > 3) {
-        return title.length > 50 ? title.substring(0, 50) + '...' : title;
-      }
-    }
-
-    // 尝试从聊天标题元素获取
+    // 优先：从聊天标题元素获取（更稳定）
     const titleSelectors = [
       '.chat-title',
       '.conversation-title',
@@ -219,16 +201,17 @@ class MonicaAdapter extends BasePlatformAdapter {
       '.conversation-header h1',
       '.conversation-header h2',
       '[data-testid*="chat-title"]',
-      '[data-testid*="conversation-title"]'
+      '[data-testid*="conversation-title"]',
+      '[class*="chat-title"], [class*="conversation-title"]',
+      'h1[class*="title"], h2[class*="title"]'
     ];
 
     for (const selector of titleSelectors) {
       const element = document.querySelector(selector);
       if (element && element.textContent && element.textContent.trim()) {
-        const title = element.textContent.trim();
-        if (title && title.length > 2) {
-          return title.length > 50 ? title.substring(0, 50) + '...' : title;
-        }
+        const t = element.textContent.trim();
+        const norm = this.normalizeTitle(t);
+        if (norm) return norm;
       }
     }
 
@@ -240,7 +223,31 @@ class MonicaAdapter extends BasePlatformAdapter {
         firstUserMessage.content;
     }
 
+    // 退而求其次：从页面<title>获取，但过滤掉通用无意义标题
+    const titleElement = document.querySelector('title');
+    if (titleElement && titleElement.textContent.trim()) {
+      const t = titleElement.textContent.trim();
+      const norm = this.normalizeTitle(t);
+      if (norm) return norm;
+    }
+
     return null;
+  }
+
+  normalizeTitle(raw) {
+    if (!raw) return null;
+    let title = String(raw).trim();
+    // 去掉常见后缀/前缀
+    title = title.replace(/\s*[-|—]\s*Monica$/i, '').trim();
+    // 过滤掉无意义的通用标题
+    const genericPatterns = [
+      /^Monica\s*[-|—]/i,
+      /^Monica$/i,
+      /Your ChatGPT AI Assistant/i,
+      /Chrome Extension/i
+    ];
+    if (genericPatterns.some(p => p.test(raw))) return null;
+    return title.length > 2 ? (title.length > 50 ? title.substring(0, 50) + '...' : title) : null;
   }
 
   /**
@@ -303,11 +310,12 @@ class MonicaAdapter extends BasePlatformAdapter {
       '[class*="chat-root"]'
     ];
 
+    // 优先返回可见容器
     for (const selector of containerSelectors) {
-      const container = document.querySelector(selector);
-      if (container) {
-        return container;
-      }
+      const candidates = Array.from(document.querySelectorAll(selector));
+      const visible = candidates.find(el => this.isElementVisible(el));
+      if (visible) return visible;
+      if (candidates.length > 0) return candidates[0];
     }
 
     // 回退1：查找包含大量消息元素的容器（模糊匹配类名）
@@ -315,7 +323,7 @@ class MonicaAdapter extends BasePlatformAdapter {
       const allElements = document.querySelectorAll('*');
       for (const element of allElements) {
         const messageCount = element.querySelectorAll('[class*="chat-message"], [class*="message--"], [data-testid*="message"]').length;
-        if (messageCount > 2) {
+        if (messageCount > 2 && this.isElementVisible(element)) {
           return element;
         }
       }
@@ -383,6 +391,9 @@ class MonicaAdapter extends BasePlatformAdapter {
       messageElements = Array.from(container.querySelectorAll('*')).filter(child => this.isMessageElement(child));
     }
 
+    // 仅保留可见消息元素，避免 Monica 切换时隐藏旧消息导致混淆
+    messageElements = messageElements.filter(el => this.isElementVisible(el));
+
     return messageElements;
   }
 
@@ -391,6 +402,7 @@ class MonicaAdapter extends BasePlatformAdapter {
    */
   extractMessageFromElement(element, index) {
     try {
+      if (!this.isElementVisible(element)) return null;
       const sender = this.determineSender(element);
       const content = this.extractContent(element);
 
@@ -412,6 +424,26 @@ class MonicaAdapter extends BasePlatformAdapter {
     } catch (error) {
       console.error('AI Chat Memory: 提取Monica消息失败:', error);
       return null;
+    }
+  }
+
+  // 判断元素是否可见（排除 display:none / visibility:hidden / 尺寸为0 / 祖先隐藏）
+  isElementVisible(el) {
+    try {
+      if (!el || !el.getBoundingClientRect) return false;
+      const rect = el.getBoundingClientRect();
+      const style = window.getComputedStyle(el);
+      if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+      if (rect.width === 0 && rect.height === 0) return false;
+      let p = el.parentElement;
+      while (p && p !== document.body) {
+        const s = window.getComputedStyle(p);
+        if (s.display === 'none' || s.visibility === 'hidden' || s.opacity === '0') return false;
+        p = p.parentElement;
+      }
+      return true;
+    } catch (_) {
+      return true;
     }
   }
 

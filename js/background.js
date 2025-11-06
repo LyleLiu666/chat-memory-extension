@@ -63,6 +63,17 @@ if (typeof chrome !== 'undefined' && chrome.runtime) {
           });
         return true; // 保持消息通道开放，等待异步响应
 
+      case 'findConversationByExternalId':
+        findConversationByExternalId(message.externalId)
+          .then(conversation => {
+            sendResponse({ conversation });
+          })
+          .catch(error => {
+            console.error('按外部ID查询会话失败:', error);
+            sendResponse({ error: error.toString() });
+          });
+        return true;
+
       case 'createConversation':
         createConversation(message.conversation)
           .then(conversationId => {
@@ -195,7 +206,7 @@ if (typeof chrome !== 'undefined' && chrome.runtime) {
 
 // 数据库对象和相关函数
 const DB_NAME = 'AIChatMemoryDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const CONVERSATION_STORE = 'conversations';
 
 // 打开数据库连接
@@ -206,13 +217,25 @@ function openDB() {
     request.onupgradeneeded = (event) => {
       const db = event.target.result;
 
+      let conversationStore;
       if (!db.objectStoreNames.contains(CONVERSATION_STORE)) {
-        const conversationStore = db.createObjectStore(CONVERSATION_STORE, { keyPath: 'conversationId' });
-        conversationStore.createIndex('link', 'link', { unique: false });
-        conversationStore.createIndex('platform', 'platform', { unique: false });
-        conversationStore.createIndex('updatedAt', 'updatedAt', { unique: false });
-        conversationStore.createIndex('createdAt', 'createdAt', { unique: false });
+        conversationStore = db.createObjectStore(CONVERSATION_STORE, { keyPath: 'conversationId' });
+      } else {
+        conversationStore = event.target.transaction.objectStore(CONVERSATION_STORE);
       }
+
+      const ensureIndex = (store, name, keyPath, options = { unique: false }) => {
+        if (!store.indexNames.contains(name)) {
+          store.createIndex(name, keyPath, options);
+        }
+      };
+
+      ensureIndex(conversationStore, 'link', 'link');
+      ensureIndex(conversationStore, 'platform', 'platform');
+      ensureIndex(conversationStore, 'updatedAt', 'updatedAt');
+      ensureIndex(conversationStore, 'createdAt', 'createdAt');
+      // 新增：外部会话ID索引
+      ensureIndex(conversationStore, 'externalId', 'externalId');
     };
 
     request.onsuccess = (event) => {
@@ -234,6 +257,33 @@ async function findConversationByUrl(url) {
     const store = transaction.objectStore(CONVERSATION_STORE);
     const index = store.index('link');
     const request = index.get(url);
+
+    request.onsuccess = () => {
+      resolve(request.result || null);
+    };
+
+    request.onerror = (event) => {
+      reject(event.target.error);
+    };
+  });
+}
+
+// 根据外部ID查找会话
+async function findConversationByExternalId(externalId) {
+  const db = await openDB();
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([CONVERSATION_STORE], 'readonly');
+    const store = transaction.objectStore(CONVERSATION_STORE);
+    let index;
+    try {
+      index = store.index('externalId');
+    } catch (e) {
+      // 旧版本数据库无该索引
+      resolve(null);
+      return;
+    }
+    const request = index.get(externalId);
 
     request.onsuccess = () => {
       resolve(request.result || null);
