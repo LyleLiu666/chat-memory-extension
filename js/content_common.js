@@ -6,8 +6,6 @@
 // 悬浮标签DOM元素
 let floatTag = null;
 let iconElement = null;
-let statusElement = null;
-let saveButton = null;
 
 // 初始化状态标记，防止重复初始化
 let isInitialized = false;
@@ -16,6 +14,8 @@ let isInitialized = false;
 window.aiChatMemorySettings = {
   autoSave: true // 默认开启自动保存
 };
+
+const FLOAT_ICON_SIZE = '28px';
 
 // 判断扩展运行时是否可用（runtime.id 某些情况下会暂时不可用）
 function canUseRuntimeAPI() {
@@ -110,8 +110,6 @@ function cleanupExistingFloatTags() {
   // 重置全局变量
   floatTag = null;
   iconElement = null;
-  statusElement = null;
-  saveButton = null;
 }
 
 // 保存悬浮标签位置到本地存储（基于边缘距离）
@@ -235,24 +233,7 @@ function createFloatTag() {
   // 创建图标元素
   iconElement = document.createElement('div');
   iconElement.className = 'ai-chat-memory-icon';
-
-  // 创建logo图片元素
-  const logoImg = document.createElement('img');
-  if (typeof chrome !== 'undefined' && chrome.runtime) {
-    logoImg.src = chrome.runtime.getURL('icons/logo.svg');
-  } else {
-    // 回退到简单的文字logo
-    logoImg.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTggMUwxIDQgTDEgMTIgTDE2IDEyIEwxNiA0IEw4IDFaIiBzdHJva2U9IiM0MDkwRmYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPgo=';
-  }
-  logoImg.alt = 'AI Chat Memory Logo';
-  logoImg.style.width = '16px';
-  logoImg.style.height = '16px';
-  logoImg.style.display = 'block';
-  logoImg.style.objectFit = 'contain';
-  logoImg.style.objectPosition = 'center';
-
-  // 将logo图片添加到图标容器中
-  iconElement.appendChild(logoImg);
+  iconElement.innerHTML = createLogoHTML(FLOAT_ICON_SIZE);
 
   // 拖动相关变量
   let isDragging = false;
@@ -404,27 +385,34 @@ function createFloatTag() {
 
     // 如果是点击（不是拖动且时间短）
     if (!isDragging && clickDuration < 300) {
-      // 检查扩展上下文是否有效
-      if (typeof chrome === 'undefined' || !chrome.runtime?.id) {
-        console.log('AI Chat Memory: 扩展上下文已失效，请刷新页面');
-        return;
-      }
+      const isManualMode = !(window.aiChatMemorySettings && window.aiChatMemorySettings.autoSave);
+      const forceOpenPanel = e.metaKey || e.ctrlKey;
 
-      // 触发打开侧边栏或管理面板
-      try {
-        if (typeof chrome !== 'undefined' && chrome.runtime) {
-          chrome.runtime.sendMessage({
-            type: 'openSidePanel'
-          }, function(response) {
-            if (chrome.runtime.lastError) {
-              console.error('打开侧边栏失败:', chrome.runtime.lastError);
-            } else {
-              console.log('AI Chat Memory: 侧边栏打开请求已发送');
-            }
-          });
+      if (isManualMode && !forceOpenPanel) {
+        handleManualSave();
+      } else {
+        // 检查扩展上下文是否有效
+        if (typeof chrome === 'undefined' || !chrome.runtime?.id) {
+          console.log('AI Chat Memory: 扩展上下文已失效，请刷新页面');
+          return;
         }
-      } catch (error) {
-        console.error('发送消息失败:', error);
+
+        // 触发打开侧边栏或管理面板
+        try {
+          if (typeof chrome !== 'undefined' && chrome.runtime) {
+            chrome.runtime.sendMessage({
+              type: 'openSidePanel'
+            }, function(response) {
+              if (chrome.runtime.lastError) {
+                console.error('打开侧边栏失败:', chrome.runtime.lastError);
+              } else {
+                console.log('AI Chat Memory: 侧边栏打开请求已发送');
+              }
+            });
+          }
+        } catch (error) {
+          console.error('发送消息失败:', error);
+        }
       }
     }
 
@@ -494,8 +482,9 @@ function createFloatTag() {
     }
 
     // 确保位置在当前视窗范围内（考虑标签尺寸）
-    const tagWidth = 200;  // 预估悬浮标签宽度
-    const tagHeight = 50;  // 预估悬浮标签高度
+    const rect = floatTag.getBoundingClientRect();
+    const tagWidth = rect.width || 48;
+    const tagHeight = rect.height || 48;
     const maxX = window.innerWidth - tagWidth;
     const maxY = window.innerHeight - tagHeight;
 
@@ -522,19 +511,8 @@ function createFloatTag() {
     }
   }
 
-  // 创建状态文本元素
-  statusElement = document.createElement('div');
-  statusElement.className = 'ai-chat-memory-status';
-
-  // 创建保存按钮（仅在手动保存模式下显示）
-  saveButton = document.createElement('div');
-  saveButton.className = 'ai-chat-memory-save';
-  saveButton.innerHTML = '<span style="font-size: 14px;">💾</span>'; // 使用Unicode保存图标
-  saveButton.addEventListener('click', handleManualSave);
-
   // 添加元素到悬浮标签
   floatTag.appendChild(iconElement);
-  floatTag.appendChild(statusElement);
 
   // 添加到页面
   document.body.appendChild(floatTag);
@@ -583,7 +561,7 @@ function repositionFloatTag() {
 
       // 确保垂直位置在当前视窗范围内
       const rect = floatTag.getBoundingClientRect();
-      const tagHeight = rect.height || 50;
+      const tagHeight = rect.height || 48;
       const maxY = window.innerHeight - tagHeight;
       const constrainedY = Math.max(0, Math.min(targetY, maxY));
 
@@ -610,8 +588,8 @@ function repositionFloatTag() {
 
     // 确保位置在当前视窗范围内
     const rect = floatTag.getBoundingClientRect();
-    const tagWidth = rect.width || 200;
-    const tagHeight = rect.height || 50;
+    const tagWidth = rect.width || 48;
+    const tagHeight = rect.height || 48;
     const maxX = window.innerWidth - tagWidth;
     const maxY = window.innerHeight - tagHeight;
 
@@ -625,7 +603,7 @@ function repositionFloatTag() {
 }
 
 // 生成logo HTML的辅助函数
-function createLogoHTML(size = '16px') {
+function createLogoHTML(size = FLOAT_ICON_SIZE) {
   if (typeof chrome !== 'undefined' && chrome.runtime) {
     return `<img src="${chrome.runtime.getURL('icons/logo.svg')}" alt="AI Chat Memory Logo" style="width: ${size}; height: ${size}; display: block; object-fit: contain; object-position: center;">`;
   } else {
@@ -633,9 +611,25 @@ function createLogoHTML(size = '16px') {
   }
 }
 
+function createGlyphIconHTML(char, color, size = FLOAT_ICON_SIZE) {
+  const numericSize = parseInt(size, 10) || 24;
+  const fontSize = Math.max(12, numericSize - 6);
+  return `<span style="width: ${size}; height: ${size}; display: flex; align-items: center; justify-content: center; font-size: ${fontSize}px; color: ${color}; font-weight: bold;">${char}</span>`;
+}
+
+function createCheckIconHTML(size = FLOAT_ICON_SIZE) {
+  return createGlyphIconHTML('✓', '#16a34a', size);
+}
+
+function createErrorIconHTML(size = FLOAT_ICON_SIZE) {
+  return createGlyphIconHTML('✕', '#dc2626', size);
+}
+
 // 设置悬浮标签状态（统一状态管理函数）
 function setFloatTagState(state, text, icon) {
-  if (!floatTag || !statusElement || !iconElement) return;
+  if (!floatTag || !iconElement) return;
+
+  floatTag.title = text || 'AI Chat Memory';
 
   // 保存贴边状态
   const isEdgeDockedState = floatTag.classList.contains('edge-docked');
@@ -655,9 +649,6 @@ function setFloatTagState(state, text, icon) {
   // 添加当前状态类
   floatTag.classList.add(`ai-chat-memory-${state}`);
 
-  // 更新状态文本
-  statusElement.textContent = text;
-
   // 更新图标
   iconElement.innerHTML = icon;
 }
@@ -666,73 +657,38 @@ function setFloatTagState(state, text, icon) {
 function updateFloatTagState() {
   if (!floatTag) return;
 
+  const iconHTML = createLogoHTML(FLOAT_ICON_SIZE);
   if (window.aiChatMemorySettings.autoSave) {
     // 自动保存模式 - 使用logo
-    setFloatTagState('auto-save', '自动记忆', createLogoHTML());
-
-    // 移除保存按钮（如果存在）
-    if (saveButton.parentElement === floatTag) {
-      floatTag.removeChild(saveButton);
-    }
+    setFloatTagState('auto-save', '自动记忆', iconHTML);
   } else {
     // 手动保存模式 - 使用logo
-    setFloatTagState('manual-save', '手动保存', createLogoHTML());
-
-    // 添加保存按钮（如果不存在）
-    if (saveButton.parentElement !== floatTag) {
-      floatTag.appendChild(saveButton);
-    }
+    setFloatTagState('manual-save', '手动保存', iconHTML);
   }
 }
 
 // 显示保存成功状态
 function showSuccessStatus() {
-  const isEdgeDocked = floatTag && floatTag.classList.contains('edge-docked');
-  const isAutoSave = window.aiChatMemorySettings && window.aiChatMemorySettings.autoSave;
+  if (!floatTag) return;
 
-  if (isEdgeDocked && isAutoSave) {
-    // 贴边模式下的自动保存：只更改图标，不显示文字
-    const originalText = statusElement.textContent;
-    iconElement.innerHTML = '<span style="color: #16a34a; font-size: 16px; font-weight: bold;">✓</span>';
+  setFloatTagState('success', '保存成功', createCheckIconHTML());
 
-    // 延迟恢复图标，但保持贴边状态
-    setTimeout(() => {
-      iconElement.innerHTML = createLogoHTML();
-    }, 1500);
-  } else {
-    // 普通模式或手动保存：显示完整的成功状态
-    setFloatTagState('success', '保存成功', '<span style="color: #16a34a; font-size: 16px; font-weight: bold;">✓</span>');
-
-    // 延迟恢复原来的状态
-    setTimeout(() => {
-      updateFloatTagState();
-    }, 2000);
-  }
+  // 延迟恢复原来的状态
+  setTimeout(() => {
+    updateFloatTagState();
+  }, 1500);
 }
 
 // 显示保存失败状态
 function showErrorStatus() {
-  const isEdgeDocked = floatTag && floatTag.classList.contains('edge-docked');
-  const isAutoSave = window.aiChatMemorySettings && window.aiChatMemorySettings.autoSave;
+  if (!floatTag) return;
 
-  if (isEdgeDocked && isAutoSave) {
-    // 贴边模式下的自动保存失败：只更改图标
-    const originalText = statusElement.textContent;
-    iconElement.innerHTML = '<span style="color: #ef4444; font-size: 16px; font-weight: bold;">✗</span>';
+  setFloatTagState('error', '保存失败', createErrorIconHTML());
 
-    // 延迟恢复图标
-    setTimeout(() => {
-      iconElement.innerHTML = createLogoHTML();
-    }, 3000);
-  } else {
-    // 普通模式或手动保存：显示完整的失败状态
-    setFloatTagState('error', '保存失败', '<span style="color: #ef4444; font-size: 16px; font-weight: bold;">✗</span>');
-
-    // 延迟恢复原来的状态
-    setTimeout(() => {
-      updateFloatTagState();
-    }, 3000);
-  }
+  // 延迟恢复原来的状态
+  setTimeout(() => {
+    updateFloatTagState();
+  }, 3000);
 }
 
 // 处理手动保存
@@ -740,29 +696,7 @@ function handleManualSave() {
   // 触发页面内容捕获
   window.dispatchEvent(new CustomEvent('ai-chat-memory-manual-save'));
 
-  // 检查是否处于贴边状态
-  const isEdgeDocked = floatTag && floatTag.classList.contains('edge-docked');
-
-  if (isEdgeDocked) {
-    // 贴边状态下，保持贴边，只更新图标和状态
-    iconElement.innerHTML = '<span style="color: #16a34a; font-size: 16px; font-weight: bold;">✓</span>';
-    statusElement.textContent = '保存成功';
-
-    // 添加成功状态类，但保持贴边状态
-    floatTag.classList.remove('ai-chat-memory-manual-save');
-    floatTag.classList.add('ai-chat-memory-success');
-
-    // 延迟恢复原来的状态
-    setTimeout(() => {
-      floatTag.classList.remove('ai-chat-memory-success');
-      floatTag.classList.add('ai-chat-memory-manual-save');
-      iconElement.innerHTML = createLogoHTML();
-      statusElement.textContent = '手动保存';
-    }, 2000);
-  } else {
-    // 非贴边状态，使用标准成功状态显示
-    showSuccessStatus();
-  }
+  showSuccessStatus();
 }
 
 // 导出通用函数和设置
