@@ -665,12 +665,24 @@ class PopupManager {
       conversationIds.includes(c.conversationId)
     );
 
-    const exportContent = this.generateExportContent(selectedConversations);
-    const blob = new Blob([exportContent], { type: 'text/plain;charset=utf-8' });
+    if (selectedConversations.length === 0) {
+      this.showNotification('没有找到匹配的对话', 'warning');
+      return;
+    }
+
+    const format = this.getSelectedExportFormat();
+    const exportPayload = this.buildExportPayload(selectedConversations, format);
+
+    if (!exportPayload || !exportPayload.content) {
+      this.showNotification('导出内容为空', 'warning');
+      return;
+    }
+
+    const blob = new Blob([exportPayload.content], { type: exportPayload.mimeType });
     const url = URL.createObjectURL(blob);
 
     const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
-    const filename = `ai-chat-memory_${description}_${timestamp}.txt`;
+    const filename = `ai-chat-memory_${description}_${timestamp}.${exportPayload.extension}`;
 
     const downloadLink = document.createElement('a');
     downloadLink.href = url;
@@ -686,21 +698,24 @@ class PopupManager {
     this.showNotification(`成功导出 ${conversationIds.length} 个对话`, 'success');
   }
 
-  generateExportContent(conversations) {
+  generateMarkdownExport(conversations) {
+    const safeConversations = Array.isArray(conversations) ? conversations : [];
     let content = `# AI Chat Memory 导出文件\n`;
     content += `导出时间: ${new Date().toLocaleString()}\n`;
-    content += `对话数量: ${conversations.length}\n\n`;
+    content += `对话数量: ${safeConversations.length}\n\n`;
 
-    conversations.forEach((conversation, index) => {
+    safeConversations.forEach((conversation, index) => {
       content += `## 对话 ${index + 1}: ${this.escapeHtml(conversation.title || '未命名')}\n`;
       content += `平台: ${this.getPlatformDisplayName(conversation.platform)}\n`;
       content += `链接: ${conversation.link}\n`;
       content += `创建时间: ${new Date(conversation.createdAt).toLocaleString()}\n`;
       content += `更新时间: ${new Date(conversation.updatedAt).toLocaleString()}\n`;
 
-      if (conversation.messages && conversation.messages.length > 0) {
+      const messages = this.sortMessages(conversation.messages || []);
+
+      if (messages.length > 0) {
         content += `--- 对话内容 ---\n`;
-        conversation.messages.forEach(message => {
+        messages.forEach(message => {
           const sender = message.sender === 'user' ? '用户' : 'AI';
           content += `\n**${sender}** [${new Date(message.createdAt).toLocaleString()}]:\n`;
           if (message.thinking) {
@@ -716,6 +731,136 @@ class PopupManager {
     return content;
   }
 
+  buildExportPayload(conversations, format) {
+    const selectedFormat = format || 'sharegpt';
+
+    if (selectedFormat === 'sharegpt') {
+      return {
+        content: this.generateShareGPTJsonl(conversations),
+        mimeType: 'application/json;charset=utf-8',
+        extension: 'jsonl'
+      };
+    }
+
+    return {
+      content: this.generateMarkdownExport(conversations),
+      mimeType: 'text/plain;charset=utf-8',
+      extension: 'txt'
+    };
+  }
+
+  generateShareGPTJsonl(conversations) {
+    const safeConversations = Array.isArray(conversations) ? conversations : [];
+    if (safeConversations.length === 0) {
+      return '';
+    }
+
+    const lines = safeConversations.map(conversation => {
+      const messages = this.sortMessages(conversation.messages || [])
+        .map(message => this.normalizeShareGPTMessage(message))
+        .filter(Boolean);
+
+      const payload = {
+        id: conversation.conversationId,
+        conversation_id: conversation.conversationId,
+        title: conversation.title || undefined,
+        platform: conversation.platform || undefined,
+        link: conversation.link || undefined,
+        created_at: conversation.createdAt || undefined,
+        updated_at: conversation.updatedAt || undefined,
+        conversations: messages
+      };
+
+      Object.keys(payload).forEach(key => {
+        if (payload[key] === undefined) {
+          delete payload[key];
+        }
+      });
+
+      return JSON.stringify(payload);
+    });
+
+    return lines.join('\n');
+  }
+
+  normalizeShareGPTMessage(message) {
+    if (!message) {
+      return null;
+    }
+
+    const value = this.composeShareGPTMessageValue(message);
+    if (!value) {
+      return null;
+    }
+
+    return {
+      from: this.mapSenderToShareGPTRole(message.sender),
+      value
+    };
+  }
+
+  composeShareGPTMessageValue(message) {
+    if (!message) {
+      return '';
+    }
+
+    const parts = [];
+    if (message.thinking && message.thinking.trim()) {
+      parts.push(`思考过程:\n${message.thinking.trim()}`);
+    }
+    if (message.content && message.content.trim()) {
+      parts.push(message.content.trim());
+    }
+
+    return parts.join('\n\n').trim();
+  }
+
+  mapSenderToShareGPTRole(sender) {
+    const normalized = (sender || '').toString().toLowerCase();
+    if (normalized === 'user' || normalized === 'human') {
+      return 'human';
+    }
+    return 'gpt';
+  }
+
+  sortMessages(messages = []) {
+    if (!Array.isArray(messages)) {
+      return [];
+    }
+
+    return [...messages].sort((a = {}, b = {}) => {
+      const positionA = typeof a.position === 'number' ? a.position : null;
+      const positionB = typeof b.position === 'number' ? b.position : null;
+
+      if (positionA !== null && positionB !== null && positionA !== positionB) {
+        return positionA - positionB;
+      }
+      if (positionA !== null && positionB === null) {
+        return -1;
+      }
+      if (positionA === null && positionB !== null) {
+        return 1;
+      }
+
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+
+      if (timeA !== timeB) {
+        return timeA - timeB;
+      }
+
+      return (a.messageId || '').localeCompare(b.messageId || '');
+    });
+  }
+
+  getSelectedExportFormat() {
+    const select = document.getElementById('exportFormatSelect');
+    if (select && select.value) {
+      return select.value;
+    }
+    return 'sharegpt';
+  }
+
   exportSingleConversation(conversationId) {
     const conversation = this.conversations.find(c => c.conversationId === conversationId);
     if (!conversation) {
@@ -723,14 +868,21 @@ class PopupManager {
       return;
     }
 
-    const exportContent = this.generateExportContent([conversation], '单个对话');
-    const blob = new Blob([exportContent], { type: 'text/plain;charset=utf-8' });
+    const format = this.getSelectedExportFormat();
+    const exportPayload = this.buildExportPayload([conversation], format);
+
+    if (!exportPayload || !exportPayload.content) {
+      this.showNotification('导出内容为空', 'warning');
+      return;
+    }
+
+    const blob = new Blob([exportPayload.content], { type: exportPayload.mimeType });
     const url = URL.createObjectURL(blob);
 
     const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
     const title = conversation.title || '未命名对话';
     const safeTitle = title.replace(/[^\w\u4e00-\u9fa5]/g, '_');
-    const filename = `ai-chat-memory_${safeTitle}_${timestamp}.txt`;
+    const filename = `ai-chat-memory_${safeTitle}_${timestamp}.${exportPayload.extension}`;
 
     const downloadLink = document.createElement('a');
     downloadLink.href = url;

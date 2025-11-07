@@ -325,7 +325,40 @@
 
         .export-section {
             display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .export-actions {
+            display: flex;
             gap: 8px;
+        }
+
+        .export-format {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .export-format label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #6b7280;
+        }
+
+        .export-format-select {
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 14px;
+            background: #fff;
+            color: #1f2937;
+            outline: none;
+            transition: border-color 0.2s ease;
+        }
+
+        .export-format-select:focus {
+            border-color: #4090FF;
         }
 
         .btn {
@@ -801,8 +834,17 @@
         </section>
 
         <section class="export-section">
-            <button class="btn btn-secondary" id="exportSelectedBtn">导出选中</button>
-            <button class="btn btn-primary" id="exportAllBtn">导出全部</button>
+            <div class="export-format">
+                <label for="exportFormatSelect">导出格式</label>
+                <select id="exportFormatSelect" class="export-format-select">
+                    <option value="sharegpt">ShareGPT JSONL</option>
+                    <option value="markdown">Markdown 文本</option>
+                </select>
+            </div>
+            <div class="export-actions">
+                <button class="btn btn-secondary" id="exportSelectedBtn">导出选中</button>
+                <button class="btn btn-primary" id="exportAllBtn">导出全部</button>
+            </div>
         </section>
     </div>
 
