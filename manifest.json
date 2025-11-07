@@ -14,12 +14,12 @@
       "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
       "css": ["css/content.css"],
       "js": [
+        "js/core/logger.js",
         "js/core/compatibility.js",
         "js/core/storage-manager.js",
         "js/core/base.js",
         "js/content_common.js",
-        "js/adapters/chatgpt.js",
-        "debug.js"
+        "js/adapters/chatgpt.js"
       ],
       "run_at": "document_end"
     },
@@ -27,12 +27,12 @@
       "matches": ["https://gemini.google.com/*"],
       "css": ["css/content.css"],
       "js": [
+        "js/core/logger.js",
         "js/core/compatibility.js",
         "js/core/storage-manager.js",
         "js/core/base.js",
         "js/content_common.js",
-        "js/adapters/gemini.js",
-        "debug.js"
+        "js/adapters/gemini.js"
       ],
       "run_at": "document_end"
     },
@@ -40,20 +40,16 @@
       "matches": ["https://monica.im/*", "https://app.monica.im/*"],
       "css": ["css/content.css"],
       "js": [
+        "js/core/logger.js",
         "js/core/compatibility.js",
         "js/core/storage-manager.js",
         "js/core/base.js",
         "js/content_common.js",
-        "js/adapters/monica.js",
-        "debug.js"
+        "js/adapters/monica.js"
       ],
       "run_at": "document_end",
       "all_frames": true,
       "match_about_blank": true
-    },
-    {
-      "matches": ["http://localhost:*/*"],
-      "js": ["debug.js"]
     }
   ],
 
